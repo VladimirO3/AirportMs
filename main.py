@@ -1,12 +1,28 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from config import APP_TITLE, COLORS, MAIN_GEOMETRY, MAIN_MIN_HEIGHT, MAIN_MIN_WIDTH
+from config import (
+    APP_TITLE,
+    COLORS,
+    MAIN_GEOMETRY,
+    MAIN_MIN_HEIGHT,
+    MAIN_MIN_WIDTH,
+    SPLASH_DURATION_MS,
+    SPLASH_GEOMETRY,
+)
 from database import DatabaseError, initialize_database
 from help_window import HELP_TOPICS, show_help as open_help
 from login_window import LoginWindow
 from reports import REPORTS, show_reports as open_reports
-from tabs import AircraftsTab, AirlinesTab, AirportsTab, FlightsTab
+from tabs import (
+    AircraftsTab,
+    AirlinesTab,
+    AirportsTab,
+    EmployeesTab,
+    FlightsTab,
+    PassengersTab,
+    TicketsTab,
+)
 
 
 class AirportApplication(tk.Tk):
@@ -15,12 +31,17 @@ class AirportApplication(tk.Tk):
     HELP_TOPICS = HELP_TOPICS
     REPORTS = REPORTS
 
-    def __init__(self) -> None:
+    def __init__(self, center: tuple[int, int] | None = None) -> None:
         super().__init__()
         self.background_color = COLORS["background"]
         self.configure(bg=self.background_color)
         self.title(APP_TITLE)
         self.geometry(MAIN_GEOMETRY)
+        if center is not None:
+            width, height = (int(value) for value in MAIN_GEOMETRY.split("x"))
+            x = center[0] - width // 2
+            y = center[1] - height // 2
+            self.geometry(f"{width}x{height}+{x}+{y}")
         self.minsize(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT)
         self.status_text = tk.StringVar(value="")
         self._configure_style()
@@ -42,6 +63,7 @@ class AirportApplication(tk.Tk):
             "TNotebook.Tab",
             background=COLORS["button"],
             foreground=COLORS["text"],
+            width=16,
             padding=(12, 6),
         )
         style.map(
@@ -105,7 +127,12 @@ class AirportApplication(tk.Tk):
         self.aircrafts_tab = AircraftsTab(
             self.notebook, self._refresh_flight_references
         )
-        self.flights_tab = FlightsTab(self.notebook)
+        self.flights_tab = FlightsTab(self.notebook, self._refresh_ticket_references)
+        self.passengers_tab = PassengersTab(
+            self.notebook, self._refresh_ticket_references
+        )
+        self.employees_tab = EmployeesTab(self.notebook)
+        self.tickets_tab = TicketsTab(self.notebook)
         self.bind("<F1>", self.show_help)
 
         # Keep the former tree attributes available to callers of the application.
@@ -113,6 +140,9 @@ class AirportApplication(tk.Tk):
         self.airports_tree = self.airports_tab.tree
         self.aircrafts_tree = self.aircrafts_tab.tree
         self.flights_tree = self.flights_tab.tree
+        self.passengers_tree = self.passengers_tab.tree
+        self.employees_tree = self.employees_tab.tree
+        self.tickets_tree = self.tickets_tab.tree
         self.airline_name = self.airlines_tab.name
         self.airline_code = self.airlines_tab.code
         self.airport_name = self.airports_tab.name
@@ -134,6 +164,25 @@ class AirportApplication(tk.Tk):
         self.flight_departure_combo = self.flights_tab.departure_combo
         self.flight_arrival_combo = self.flights_tab.arrival_combo
         self.flight_status_combo = self.flights_tab.status_combo
+        self.passenger_full_name = self.passengers_tab.full_name
+        self.passenger_name = self.passengers_tab.full_name
+        self.passenger_passport_number = self.passengers_tab.passport_number
+        self.passenger_phone = self.passengers_tab.phone
+        self.passenger_email = self.passengers_tab.email
+        self.employee_full_name = self.employees_tab.full_name
+        self.employee_name = self.employees_tab.full_name
+        self.employee_position = self.employees_tab.position
+        self.employee_phone = self.employees_tab.phone
+        self.ticket_number = self.tickets_tab.ticket_number
+        self.ticket_passenger = self.tickets_tab.passenger
+        self.ticket_passenger_combo = self.tickets_tab.passenger_combo
+        self.ticket_flight = self.tickets_tab.flight
+        self.ticket_flight_combo = self.tickets_tab.flight_combo
+        self.ticket_seat_number = self.tickets_tab.seat_number
+        self.ticket_booking_status = self.tickets_tab.booking_status
+        self.ticket_status = self.tickets_tab.booking_status
+        self.ticket_status_combo = self.tickets_tab.status_combo
+        self.ticket_price = self.tickets_tab.price
 
     def _build_menu(self) -> None:
         toolbar = tk.Frame(self, bg=self.background_color)
@@ -166,7 +215,10 @@ class AirportApplication(tk.Tk):
         if isinstance(topic, tk.Event):
             topic = None
         if topic is None:
-            topics = ("Авиакомпании", "Аэропорты", "Самолёты", "Рейсы")
+            topics = (
+                "Авиакомпании", "Аэропорты", "Самолёты", "Рейсы",
+                "Пассажиры", "Сотрудники", "Билеты",
+            )
             topic = topics[self.notebook.index(self.notebook.select())]
         self.help_window = open_help(self, topic)
         return "break"
@@ -186,6 +238,10 @@ class AirportApplication(tk.Tk):
         self.aircrafts_tab.refresh()
         self._refresh_flight_references()
         self.refresh_flights()
+        self.refresh_passengers()
+        self.refresh_employees()
+        self._refresh_ticket_references()
+        self.refresh_tickets()
 
     def refresh_airlines(self) -> None:
         self.airlines_tab.refresh()
@@ -199,8 +255,20 @@ class AirportApplication(tk.Tk):
     def refresh_flights(self) -> None:
         self.flights_tab.refresh()
 
+    def refresh_passengers(self) -> None:
+        self.passengers_tab.refresh()
+
+    def refresh_employees(self) -> None:
+        self.employees_tab.refresh()
+
+    def refresh_tickets(self) -> None:
+        self.tickets_tab.refresh()
+
     def _refresh_flight_references(self) -> None:
         self.flights_tab.refresh_references()
+
+    def _refresh_ticket_references(self) -> None:
+        self.tickets_tab.refresh_references()
 
     def add_airline(self) -> None:
         self.airlines_tab.add()
@@ -247,8 +315,79 @@ def run() -> None:
         )
         root.destroy()
         return
-    if LoginWindow().run():
-        AirportApplication().mainloop()
+    splash_center = show_splash()
+    if LoginWindow(splash_center).run():
+        AirportApplication(splash_center).mainloop()
+
+
+def show_splash() -> tuple[int, int]:
+    splash = tk.Tk()
+    splash.overrideredirect(True)
+    splash.configure(bg=COLORS["background"])
+
+    width, height = (int(value) for value in SPLASH_GEOMETRY.split("x"))
+    screen_width = splash.winfo_screenwidth()
+    screen_height = splash.winfo_screenheight()
+    x = (screen_width - width) // 2
+    y = (screen_height - height) // 2
+    splash.geometry(f"{width}x{height}+{x}+{y}")
+    center = (x + width // 2, y + height // 2)
+
+    canvas = tk.Canvas(
+        splash,
+        width=width,
+        height=height,
+        bg=COLORS["background"],
+        highlightthickness=0,
+    )
+    canvas.pack()
+    canvas.create_rectangle(
+        12, 12, width - 12, height - 12,
+        outline="#8bc7e8",
+        width=2,
+    )
+    canvas.create_oval(
+        width // 2 - 62, 34, width // 2 + 62, 158,
+        fill=COLORS["button"],
+        outline="#5ca9e6",
+        width=2,
+    )
+    canvas.create_polygon(
+        width // 2 - 8, 58,
+        width // 2 + 22, 110,
+        width // 2 + 7, 110,
+        width // 2 + 25, 137,
+        width // 2 - 4, 116,
+        width // 2 - 28, 137,
+        width // 2 - 10, 110,
+        width // 2 - 25, 110,
+        fill="#3b82c4",
+        outline="#24527a",
+    )
+    canvas.create_text(
+        width // 2,
+        192,
+        text=APP_TITLE,
+        fill=COLORS["text"],
+        font=("Segoe UI", 18, "bold"),
+    )
+    canvas.create_text(
+        width // 2,
+        225,
+        text="Подготовка системы...",
+        fill=COLORS["muted_text"],
+        font=("Segoe UI", 10),
+    )
+    progress = ttk.Progressbar(
+        splash,
+        mode="indeterminate",
+        length=260,
+    )
+    progress.place(relx=0.5, y=250, anchor=tk.CENTER)
+    progress.start(12)
+    splash.after(SPLASH_DURATION_MS, splash.destroy)
+    splash.mainloop()
+    return center
 
 
 if __name__ == "__main__":

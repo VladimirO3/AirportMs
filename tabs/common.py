@@ -44,9 +44,10 @@ class SortableTreeMixin:
             tree.heading(
                 column,
                 text=heading,
+                anchor=tk.W,
                 command=lambda column=column: self._sort_tree(tree, column),
             )
-            tree.column(column, width=130, minwidth=80, anchor=tk.CENTER)
+            tree.column(column, width=130, minwidth=80, anchor=tk.W)
         tree.column(columns[0], width=70)
         tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)

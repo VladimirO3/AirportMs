@@ -5,7 +5,16 @@ from pathlib import Path
 import database
 from help_window import HELP_TOPICS
 from login_window import validate_credentials
-from reports import report_airlines, report_airports, report_flight_statuses, report_schedule
+from reports import (
+    report_aircrafts,
+    report_airlines,
+    report_airports,
+    report_employees,
+    report_flight_statuses,
+    report_passengers,
+    report_schedule,
+    report_tickets,
+)
 from tabs.common import sort_rows
 from tabs.flights_tab import validate_flight_times
 
@@ -45,7 +54,39 @@ class DatabaseTests(unittest.TestCase):
         self.assertTrue(report_schedule())
         self.assertTrue(report_airlines())
         self.assertTrue(report_airports())
+        self.assertTrue(report_aircrafts())
+        self.assertTrue(report_passengers())
+        self.assertTrue(report_employees())
+        self.assertTrue(report_tickets())
         self.assertTrue(report_flight_statuses())
+
+    def test_create_passenger_employee_and_ticket(self) -> None:
+        passenger_id = database.add_passenger(
+            "Иван Иванов", "1234 567890", "+79990000000", "ivan@example.com"
+        )
+        employee_id = database.add_employee("Анна Петрова", "Диспетчер")
+        self.assertGreater(passenger_id, 0)
+        self.assertGreater(employee_id, 0)
+        flight_id = database.list_ticket_flight_references()[0]["id"]
+        ticket_id = database.add_ticket(
+            "T-90001", passenger_id, flight_id, "12A", "Забронирован", 2500
+        )
+        self.assertGreater(ticket_id, 0)
+        self.assertTrue(
+            any(row["ticket_number"] == "T-90001" for row in database.list_tickets())
+        )
+
+    def test_duplicate_ticket_number_is_rejected(self) -> None:
+        passenger_id = database.add_passenger("Пётр Сидоров", "9876 543210")
+        flight_id = database.list_ticket_flight_references()[0]["id"]
+        database.add_ticket(
+            "T-20001", passenger_id, flight_id, "14B", "Оплачен", 3000
+        )
+        self.assertTrue(database.ticket_number_exists("T-20001"))
+        with self.assertRaises(database.DatabaseError):
+            database.add_ticket(
+                "T-20001", passenger_id, flight_id, "14C", "Оплачен", 3000
+            )
 
 
 class ValidationTests(unittest.TestCase):

@@ -21,8 +21,12 @@ from database import (
     DatabaseError,
     report_airlines,
     report_airports,
+    report_aircrafts,
+    report_employees,
     report_flight_statuses,
+    report_passengers,
     report_schedule,
+    report_tickets,
     fetch_all,
 )
 
@@ -36,6 +40,22 @@ REPORTS: dict[str, tuple[tuple[str, ...], ReportSource]] = {
     ),
     "Авиакомпании": (("ID", "Название", "IATA-код"), report_airlines),
     "Аэропорты": (("ID", "Название", "Город", "IATA-код"), report_airports),
+    "Самолёты": (
+        ("ID", "Модель", "Регистрационный номер", "Мест"),
+        report_aircrafts,
+    ),
+    "Пассажиры": (
+        ("ID", "ФИО", "Паспорт", "Телефон", "E-mail"),
+        report_passengers,
+    ),
+    "Сотрудники": (
+        ("ID", "ФИО", "Должность", "Телефон"),
+        report_employees,
+    ),
+    "Билеты": (
+        ("ID", "Номер билета", "Пассажир", "Рейс", "Место", "Статус", "Цена"),
+        report_tickets,
+    ),
     "Распределение рейсов по статусам": (("Статус", "Количество рейсов"), report_flight_statuses),
 }
 

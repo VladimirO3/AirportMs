@@ -1,6 +1,7 @@
 import tkinter as tk
 from datetime import datetime
 from tkinter import messagebox, ttk
+from collections.abc import Callable
 
 from config import FLIGHT_DATETIME_FORMAT
 from database import (
@@ -32,9 +33,12 @@ def validate_flight_times(departure: str, arrival: str) -> tuple[bool, str | Non
 
 
 class FlightsTab(ttk.Frame, SortableTreeMixin):
-    def __init__(self, parent: ttk.Notebook) -> None:
+    def __init__(
+        self, parent: ttk.Notebook, on_changed: Callable[[], None] | None = None
+    ) -> None:
         ttk.Frame.__init__(self, parent, padding=12)
         SortableTreeMixin.__init__(self)
+        self._on_changed = on_changed or (lambda: None)
         parent.add(self, text="Рейсы")
 
         form = ttk.LabelFrame(self, text="Рейс", padding=10)
@@ -254,6 +258,7 @@ class FlightsTab(ttk.Frame, SortableTreeMixin):
             return
         self._clear_form()
         self.refresh()
+        self._on_changed()
 
     def _validated_values(self) -> tuple[object, ...] | None:
         number = self.flight_number.get().strip().upper()
@@ -327,6 +332,7 @@ class FlightsTab(ttk.Frame, SortableTreeMixin):
             return
         self._clear_form()
         self.refresh()
+        self._on_changed()
 
     def _selected_id(self) -> int | None:
         selection = self.tree.selection()

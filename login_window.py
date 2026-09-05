@@ -14,13 +14,18 @@ class LoginWindow(tk.Tk):
     DEFAULT_LOGIN = DEFAULT_LOGIN
     DEFAULT_PASSWORD = DEFAULT_PASSWORD
 
-    def __init__(self) -> None:
+    def __init__(self, center: tuple[int, int] | None = None) -> None:
         super().__init__()
         self.authenticated = False
         self.background_color = COLORS["background"]
         self.configure(bg=self.background_color)
         self.title(LOGIN_TITLE)
         self.geometry(LOGIN_GEOMETRY)
+        if center is not None:
+            width, height = (int(value) for value in LOGIN_GEOMETRY.split("x"))
+            x = center[0] - width // 2
+            y = center[1] - height // 2
+            self.geometry(f"{width}x{height}+{x}+{y}")
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._configure_style()

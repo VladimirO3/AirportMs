@@ -11,7 +11,7 @@ import sqlite3
 
 
 DATABASE_PATH = Path(__file__).with_name("airport.db")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class DatabaseError(RuntimeError):
@@ -76,9 +76,9 @@ def initialize_database() -> None:
                     _migrate_to_third_normal_form(connection)
                 else:
                     _create_normalized_schema(connection)
-                connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             else:
                 _create_normalized_schema(connection)
+            connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
             _ensure_indexes(connection)
             _insert_seed_data(connection)
     except DatabaseError:
@@ -130,6 +130,28 @@ def _create_normalized_schema(connection: sqlite3.Connection) -> None:
             status_id INTEGER NOT NULL REFERENCES flight_statuses(id),
             CHECK(departure_airport_id <> arrival_airport_id),
             CHECK(arrival_time > departure_time)
+        );
+        CREATE TABLE IF NOT EXISTS passengers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            passport_number TEXT NOT NULL UNIQUE,
+            phone TEXT,
+            email TEXT
+        );
+        CREATE TABLE IF NOT EXISTS employees (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            full_name TEXT NOT NULL,
+            position TEXT NOT NULL,
+            phone TEXT
+        );
+        CREATE TABLE IF NOT EXISTS tickets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ticket_number TEXT NOT NULL UNIQUE,
+            passenger_id INTEGER NOT NULL REFERENCES passengers(id),
+            flight_id INTEGER NOT NULL REFERENCES flights(id),
+            seat_number TEXT NOT NULL,
+            booking_status TEXT NOT NULL,
+            price REAL NOT NULL CHECK(price > 0)
         );
         """
     )
@@ -206,6 +228,7 @@ def _migrate_to_third_normal_form(connection: sqlite3.Connection) -> None:
         """
     )
     connection.execute("PRAGMA foreign_keys = ON")
+    _create_normalized_schema(connection)
 
 
 def _ensure_indexes(connection: sqlite3.Connection) -> None:
@@ -233,6 +256,13 @@ def _ensure_indexes(connection: sqlite3.Connection) -> None:
         "CREATE INDEX IF NOT EXISTS idx_flights_aircraft ON flights(aircraft_id)",
         "CREATE INDEX IF NOT EXISTS idx_flights_departure_airport ON flights(departure_airport_id)",
         "CREATE INDEX IF NOT EXISTS idx_flights_arrival_airport ON flights(arrival_airport_id)",
+        "CREATE INDEX IF NOT EXISTS idx_passengers_passport ON passengers(passport_number)",
+        "CREATE INDEX IF NOT EXISTS idx_passengers_name ON passengers(full_name)",
+        "CREATE INDEX IF NOT EXISTS idx_employees_name ON employees(full_name)",
+        "CREATE INDEX IF NOT EXISTS idx_employees_position ON employees(position)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_passenger ON tickets(passenger_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_flight ON tickets(flight_id)",
+        "CREATE INDEX IF NOT EXISTS idx_tickets_status ON tickets(booking_status)",
     ):
         connection.execute(statement)
 
@@ -310,6 +340,84 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
                     for x in examples
                 ],
             )
+
+    connection.executemany(
+        """
+        INSERT OR IGNORE INTO passengers(
+            full_name, passport_number, phone, email
+        ) VALUES (?, ?, ?, ?)
+        """,
+        [
+            ("Иванов Иван Иванович", "4510 123456", "+7 900 111-22-33", "ivanov@example.com"),
+            ("Петрова Анна Сергеевна", "4012 234567", "+7 900 222-33-44", "petrova@example.com"),
+            ("Сидоров Пётр Алексеевич", "5015 345678", "+7 900 333-44-55", "sidorov@example.com"),
+            ("Кузнецова Мария Олеговна", "4516 456789", "+7 900 444-55-66", "kuznetsova@example.com"),
+        ],
+    )
+    employees = [
+        ("Смирнов Алексей Викторович", "Старший диспетчер", "+7 900 555-11-22"),
+        ("Орлова Елена Андреевна", "Диспетчер", "+7 900 666-22-33"),
+        ("Волков Дмитрий Павлович", "Специалист по регистрации", "+7 900 777-33-44"),
+    ]
+    for full_name, position, phone in employees:
+        connection.execute(
+            """
+            INSERT INTO employees(full_name, position, phone)
+            SELECT ?, ?, ?
+            WHERE NOT EXISTS (
+                SELECT 1 FROM employees
+                WHERE full_name = ? AND position = ?
+            )
+            """,
+            (full_name, position, phone, full_name, position),
+        )
+
+    passenger_ids = {
+        row["passport_number"]: row["id"]
+        for row in connection.execute(
+            "SELECT id, passport_number FROM passengers"
+        )
+    }
+    flight_ids = {
+        row["flight_number"]: row["id"]
+        for row in connection.execute("SELECT id, flight_number FROM flights")
+    }
+    ticket_examples = [
+        ("T-10001", "4510 123456", "SU-101", "12A", "Забронирован", 12500),
+        ("T-10002", "4012 234567", "S7-205", "7C", "Оплачен", 9800),
+        ("T-10003", "5015 345678", "U6-310", "4A", "Забронирован", 11200),
+        ("T-10004", "4516 456789", "DP-404", "18F", "Оплачен", 8700),
+    ]
+    if all(
+        passport in passenger_ids and flight_number in flight_ids
+        for _, passport, flight_number, _, _, _ in ticket_examples
+    ):
+        connection.executemany(
+            """
+            INSERT OR IGNORE INTO tickets(
+                ticket_number, passenger_id, flight_id,
+                seat_number, booking_status, price
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    ticket_number,
+                    passenger_ids[passport],
+                    flight_ids[flight_number],
+                    seat_number,
+                    booking_status,
+                    price,
+                )
+                for (
+                    ticket_number,
+                    passport,
+                    flight_number,
+                    seat_number,
+                    booking_status,
+                    price,
+                ) in ticket_examples
+            ],
+        )
 
 
 # Compatibility primitives for callers outside the tabs.
@@ -533,4 +641,272 @@ def report_flight_statuses() -> list[sqlite3.Row]:
     return _fetch_all(
         "SELECT fs.name, COUNT(f.id) FROM flight_statuses fs LEFT JOIN flights f ON f.status_id = fs.id GROUP BY fs.id, fs.name ORDER BY COUNT(f.id) DESC, fs.name",
         operation="Не удалось сформировать отчет по статусам",
+    )
+
+
+def report_aircrafts() -> list[sqlite3.Row]:
+    return _fetch_all(
+        """
+        SELECT ac.id, am.name, ac.registration_number, ac.seats
+        FROM aircrafts ac
+        JOIN aircraft_models am ON am.id = ac.model_id
+        ORDER BY ac.registration_number
+        """,
+        operation="Не удалось сформировать отчет по самолётам",
+    )
+
+
+def report_passengers() -> list[sqlite3.Row]:
+    return _fetch_all(
+        "SELECT id, full_name, passport_number, phone, email "
+        "FROM passengers ORDER BY full_name",
+        operation="Не удалось сформировать отчет по пассажирам",
+    )
+
+
+def report_employees() -> list[sqlite3.Row]:
+    return _fetch_all(
+        "SELECT id, full_name, position, phone "
+        "FROM employees ORDER BY full_name",
+        operation="Не удалось сформировать отчет по сотрудникам",
+    )
+
+
+def report_tickets() -> list[sqlite3.Row]:
+    return _fetch_all(
+        """
+        SELECT t.id, t.ticket_number, p.full_name,
+               f.flight_number, t.seat_number,
+               t.booking_status, t.price
+        FROM tickets t
+        JOIN passengers p ON p.id = t.passenger_id
+        JOIN flights f ON f.id = t.flight_id
+        ORDER BY t.ticket_number
+        """,
+        operation="Не удалось сформировать отчет по билетам",
+    )
+
+
+# Passengers, employees and tickets repository operations.
+def list_passengers() -> list[sqlite3.Row]:
+    return _fetch_all(
+        "SELECT id, full_name, passport_number, phone, email "
+        "FROM passengers ORDER BY full_name",
+        operation="Не удалось загрузить пассажиров",
+    )
+
+
+def get_passenger(passenger_id: int) -> sqlite3.Row | None:
+    rows = _fetch_all(
+        "SELECT id, full_name, passport_number, phone, email "
+        "FROM passengers WHERE id = ?",
+        (passenger_id,),
+        operation="Не удалось загрузить пассажира",
+    )
+    return rows[0] if rows else None
+
+
+def passport_number_exists(
+    passport_number: str, exclude_id: int | None = None
+) -> bool:
+    rows = _fetch_all(
+        "SELECT 1 FROM passengers WHERE passport_number = ? AND id <> ?",
+        (passport_number, exclude_id if exclude_id is not None else -1),
+        operation="Не удалось проверить паспортные данные",
+    )
+    return bool(rows)
+
+
+def add_passenger(
+    full_name: str, passport_number: str, phone: str = "", email: str = ""
+) -> int:
+    return _execute(
+        "INSERT INTO passengers(full_name, passport_number, phone, email) "
+        "VALUES (?, ?, ?, ?)",
+        (full_name, passport_number, phone or None, email or None),
+        "Не удалось добавить пассажира",
+    )
+
+
+def update_passenger(
+    passenger_id: int,
+    full_name: str,
+    passport_number: str,
+    phone: str = "",
+    email: str = "",
+) -> int:
+    return _execute(
+        "UPDATE passengers SET full_name = ?, passport_number = ?, "
+        "phone = ?, email = ? WHERE id = ?",
+        (full_name, passport_number, phone or None, email or None, passenger_id),
+        "Не удалось изменить пассажира",
+    )
+
+
+def delete_passenger(passenger_id: int) -> int:
+    return _execute(
+        "DELETE FROM passengers WHERE id = ?",
+        (passenger_id,),
+        "Не удалось удалить пассажира",
+    )
+
+
+def list_employees() -> list[sqlite3.Row]:
+    return _fetch_all(
+        "SELECT id, full_name, position, phone FROM employees ORDER BY full_name",
+        operation="Не удалось загрузить сотрудников",
+    )
+
+
+def get_employee(employee_id: int) -> sqlite3.Row | None:
+    rows = _fetch_all(
+        "SELECT id, full_name, position, phone FROM employees WHERE id = ?",
+        (employee_id,),
+        operation="Не удалось загрузить сотрудника",
+    )
+    return rows[0] if rows else None
+
+
+def add_employee(full_name: str, position: str, phone: str = "") -> int:
+    return _execute(
+        "INSERT INTO employees(full_name, position, phone) VALUES (?, ?, ?)",
+        (full_name, position, phone or None),
+        "Не удалось добавить сотрудника",
+    )
+
+
+def update_employee(
+    employee_id: int, full_name: str, position: str, phone: str = ""
+) -> int:
+    return _execute(
+        "UPDATE employees SET full_name = ?, position = ?, phone = ? WHERE id = ?",
+        (full_name, position, phone or None, employee_id),
+        "Не удалось изменить сотрудника",
+    )
+
+
+def delete_employee(employee_id: int) -> int:
+    return _execute(
+        "DELETE FROM employees WHERE id = ?",
+        (employee_id,),
+        "Не удалось удалить сотрудника",
+    )
+
+
+TICKET_STATUSES = ("Забронирован", "Оплачен", "Отменён")
+
+
+def list_ticket_statuses() -> tuple[str, ...]:
+    return TICKET_STATUSES
+
+
+def list_ticket_passenger_references() -> list[sqlite3.Row]:
+    return _fetch_all(
+        "SELECT id, full_name, passport_number FROM passengers ORDER BY full_name",
+        operation="Не удалось загрузить список пассажиров",
+    )
+
+
+def list_ticket_flight_references() -> list[sqlite3.Row]:
+    return _fetch_all(
+        """
+        SELECT f.id, f.flight_number, dep.iata_code AS departure,
+               arr.iata_code AS arrival, f.departure_time
+        FROM flights f
+        JOIN airports dep ON dep.id = f.departure_airport_id
+        JOIN airports arr ON arr.id = f.arrival_airport_id
+        ORDER BY f.departure_time
+        """,
+        operation="Не удалось загрузить список рейсов",
+    )
+
+
+def list_tickets() -> list[sqlite3.Row]:
+    return _fetch_all(
+        """
+        SELECT t.id, t.ticket_number, t.passenger_id, p.full_name AS passenger,
+               t.flight_id, f.flight_number AS flight, t.seat_number,
+               t.booking_status, t.booking_status AS status, t.price
+        FROM tickets t
+        JOIN passengers p ON p.id = t.passenger_id
+        JOIN flights f ON f.id = t.flight_id
+        ORDER BY t.id DESC
+        """,
+        operation="Не удалось загрузить билеты",
+    )
+
+
+def get_ticket(ticket_id: int) -> sqlite3.Row | None:
+    rows = _fetch_all(
+        "SELECT id, ticket_number, passenger_id, flight_id, seat_number, "
+        "booking_status, price FROM tickets WHERE id = ?",
+        (ticket_id,),
+        operation="Не удалось загрузить билет",
+    )
+    return rows[0] if rows else None
+
+
+def ticket_number_exists(
+    ticket_number: str, exclude_id: int | None = None
+) -> bool:
+    rows = _fetch_all(
+        "SELECT 1 FROM tickets WHERE ticket_number = ? AND id <> ?",
+        (ticket_number, exclude_id if exclude_id is not None else -1),
+        operation="Не удалось проверить номер билета",
+    )
+    return bool(rows)
+
+
+def add_ticket(
+    ticket_number: str,
+    passenger_id: int,
+    flight_id: int,
+    seat_number: str,
+    booking_status: str | None = None,
+    price: float = 0,
+    *,
+    status: str | None = None,
+) -> int:
+    booking_status = booking_status or status or ""
+    return _execute(
+        "INSERT INTO tickets(ticket_number, passenger_id, flight_id, seat_number, "
+        "booking_status, price) VALUES (?, ?, ?, ?, ?, ?)",
+        (ticket_number, passenger_id, flight_id, seat_number, booking_status, price),
+        "Не удалось добавить билет",
+    )
+
+
+def update_ticket(
+    ticket_id: int,
+    ticket_number: str,
+    passenger_id: int,
+    flight_id: int,
+    seat_number: str,
+    booking_status: str | None = None,
+    price: float = 0,
+    *,
+    status: str | None = None,
+) -> int:
+    booking_status = booking_status or status or ""
+    return _execute(
+        "UPDATE tickets SET ticket_number = ?, passenger_id = ?, flight_id = ?, "
+        "seat_number = ?, booking_status = ?, price = ? WHERE id = ?",
+        (
+            ticket_number,
+            passenger_id,
+            flight_id,
+            seat_number,
+            booking_status,
+            price,
+            ticket_id,
+        ),
+        "Не удалось изменить билет",
+    )
+
+
+def delete_ticket(ticket_id: int) -> int:
+    return _execute(
+        "DELETE FROM tickets WHERE id = ?",
+        (ticket_id,),
+        "Не удалось удалить билет",
     )
