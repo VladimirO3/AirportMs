@@ -1,6 +1,44 @@
+# Python cache and build artifacts
 .venv/
 __pycache__/
+**/__pycache__/
 *.py[cod]
-airport.db
-.idea/
+*$py.class
+*.pyo
 
+# Test, coverage and tooling output
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+*.log
+
+# Local application data
+airport.db
+*.db
+*.sqlite
+*.sqlite3
+airport_report_*.txt
+airport_report_*.html
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
