@@ -1,20 +1,26 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
+from config import COLORS, DEFAULT_LOGIN, DEFAULT_PASSWORD, LOGIN_GEOMETRY, LOGIN_TITLE
+
+
+def validate_credentials(login: str, password: str) -> bool:
+    return login.strip() == DEFAULT_LOGIN and password == DEFAULT_PASSWORD
+
 
 class LoginWindow(tk.Tk):
     """Окно входа диспетчера в приложение."""
 
-    DEFAULT_LOGIN = "admin"
-    DEFAULT_PASSWORD = "admin"
+    DEFAULT_LOGIN = DEFAULT_LOGIN
+    DEFAULT_PASSWORD = DEFAULT_PASSWORD
 
     def __init__(self) -> None:
         super().__init__()
         self.authenticated = False
-        self.background_color = "#eaf4ff"
+        self.background_color = COLORS["background"]
         self.configure(bg=self.background_color)
-        self.title("Вход в диспетчерскую службу")
-        self.geometry("420x280")
+        self.title(LOGIN_TITLE)
+        self.geometry(LOGIN_GEOMETRY)
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", self._close)
         self._configure_style()
@@ -30,18 +36,21 @@ class LoginWindow(tk.Tk):
         style.configure(
             "Login.TLabel",
             background=self.background_color,
-            foreground="#174a6e",
+            foreground=COLORS["text"],
             font=("Segoe UI", 16, "bold"),
         )
         style.configure(
             "Login.TButton",
-            background="#cfeeff",
-            foreground="#174a6e",
+            background=COLORS["button"],
+            foreground=COLORS["text"],
             padding=(12, 6),
         )
         style.map(
             "Login.TButton",
-            background=[("active", "#b8e5ff"), ("pressed", "#9fd8f5")],
+            background=[
+                ("active", COLORS["button_active"]),
+                ("pressed", COLORS["button_pressed"]),
+            ],
         )
 
     def _build_interface(self) -> None:
@@ -70,8 +79,8 @@ class LoginWindow(tk.Tk):
         password_entry.grid(row=2, column=1, sticky=tk.EW, padx=(12, 0), pady=6)
         ttk.Label(
             frame,
-            text="По умолчанию: admin / admin",
-            foreground="#4b6b80",
+            text=f"По умолчанию: {DEFAULT_LOGIN} / {DEFAULT_PASSWORD}",
+            foreground=COLORS["muted_text"],
         ).grid(row=3, column=0, columnspan=2, pady=(4, 12))
         ttk.Button(
             frame,
@@ -89,10 +98,7 @@ class LoginWindow(tk.Tk):
                 parent=self,
             )
             return
-        if (
-            self.login.get().strip() == self.DEFAULT_LOGIN
-            and self.password.get() == self.DEFAULT_PASSWORD
-        ):
+        if validate_credentials(self.login.get(), self.password.get()):
             self.authenticated = True
             self.destroy()
             return
