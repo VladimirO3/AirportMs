@@ -1,7 +1,12 @@
 """Centralized application configuration."""
 
+from pathlib import Path
+
+
 APP_TITLE = "Диспетчерская служба аэропорта"
+APP_COPYRIGHT = "© 2026 AirportMs"
 LOGIN_TITLE = "Вход в диспетчерскую службу"
+APP_ICON_PATH = Path(__file__).with_name("app.ico")
 
 DEFAULT_LOGIN = "admin"
 DEFAULT_PASSWORD = "admin"
@@ -12,6 +17,7 @@ MAIN_MIN_HEIGHT = 550
 LOGIN_GEOMETRY = "420x280"
 SPLASH_GEOMETRY = "520x300"
 SPLASH_DURATION_MS = 1800
+INACTIVITY_TIMEOUT_MS = 5 * 60 * 1000
 REPORT_GEOMETRY = "1050x600"
 REPORT_MIN_WIDTH = 760
 REPORT_MIN_HEIGHT = 450

@@ -324,16 +324,38 @@ class ReportWindow:
             messagebox.showwarning("Печать отчета", "Сначала сформируйте отчет.", parent=self.window)
             return
         rows = [tuple(self.tree.item(item, "values")) for item in self.tree.get_children()]
-        separator = "-+-".join("-" * max(12, len(header)) for header in self._headers)
+        table = self._format_table(self._headers, rows)
         report_lines = [
             self.report_name.get(),
             APP_TITLE,
             "",
-            " | ".join(self._headers),
-            separator,
-            *(" | ".join(str(value) for value in row) for row in rows),
+            *table,
         ]
         self.preview = PrintPreviewWindow(self.window, self.report_name.get(), "\n".join(report_lines))
+
+    @staticmethod
+    def _format_table(
+        headers: tuple[str, ...],
+        rows: list[tuple[object, ...]],
+    ) -> list[str]:
+        values = [[str(value) for value in row] for row in rows]
+        widths = [
+            max(
+                12,
+                len(header),
+                *(len(row[index]) for row in values),
+            )
+            for index, header in enumerate(headers)
+        ]
+        separator = "-+-".join("-" * width for width in widths)
+        header_line = " | ".join(
+            header.ljust(width) for header, width in zip(headers, widths)
+        )
+        data_lines = [
+            " | ".join(value.ljust(width) for value, width in zip(row, widths))
+            for row in values
+        ]
+        return [header_line, separator, *data_lines]
 
 
 def show_reports(parent: tk.Misc) -> ReportWindow:

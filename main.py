@@ -1,9 +1,12 @@
+import struct
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from config import (
     APP_TITLE,
+    APP_ICON_PATH,
     COLORS,
+    INACTIVITY_TIMEOUT_MS,
     MAIN_GEOMETRY,
     MAIN_MIN_HEIGHT,
     MAIN_MIN_WIDTH,
@@ -23,6 +26,7 @@ from tabs import (
     PassengersTab,
     TicketsTab,
 )
+from tabs.common import install_tooltips
 
 
 class AirportApplication(tk.Tk):
@@ -33,6 +37,8 @@ class AirportApplication(tk.Tk):
 
     def __init__(self, center: tuple[int, int] | None = None) -> None:
         super().__init__()
+        if APP_ICON_PATH.exists():
+            self.iconbitmap(APP_ICON_PATH)
         self.background_color = COLORS["background"]
         self.configure(bg=self.background_color)
         self.title(APP_TITLE)
@@ -43,10 +49,15 @@ class AirportApplication(tk.Tk):
             y = center[1] - height // 2
             self.geometry(f"{width}x{height}+{x}+{y}")
         self.minsize(MAIN_MIN_WIDTH, MAIN_MIN_HEIGHT)
+        self._relogin_requested = False
+        self._idle_after_id: str | None = None
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.status_text = tk.StringVar(value="")
         self._configure_style()
         self._build_interface()
         self.refresh_all()
+        self._bind_activity()
+        self._schedule_idle_logout()
 
     def _configure_style(self) -> None:
         style = ttk.Style(self)
@@ -93,11 +104,15 @@ class AirportApplication(tk.Tk):
             background=COLORS["table"],
             fieldbackground=COLORS["table"],
         )
-        style.configure("Title.TLabel", font=("Segoe UI", 16, "bold"))
+        style.configure(
+            "Title.TLabel",
+            font=("Segoe UI", 22, "bold"),
+            foreground=COLORS["text"],
+        )
 
     def _build_interface(self) -> None:
         self._build_menu()
-        header = ttk.Frame(self, padding=(18, 14, 18, 8))
+        header = ttk.Frame(self, padding=(18, 6, 18, 8))
         header.pack(fill=tk.X)
         header.columnconfigure(1, weight=1)
         title_frame = ttk.Frame(header)
@@ -134,6 +149,7 @@ class AirportApplication(tk.Tk):
         self.employees_tab = EmployeesTab(self.notebook)
         self.tickets_tab = TicketsTab(self.notebook)
         self.bind("<F1>", self.show_help)
+        install_tooltips(self)
 
         # Keep the former tree attributes available to callers of the application.
         self.airlines_tree = self.airlines_tab.tree
@@ -204,6 +220,36 @@ class AirportApplication(tk.Tk):
         tk.Button(
             toolbar, text="Справка", command=self.show_help, **button_options
         ).pack(side=tk.LEFT, padx=(4, 0))
+        tk.Button(
+            toolbar, text="Выход", command=self._logout, **button_options
+        ).pack(side=tk.RIGHT)
+
+    def _bind_activity(self) -> None:
+        for sequence in ("<KeyPress>", "<ButtonPress>", "<Motion>"):
+            self.bind_all(sequence, self._reset_idle_timer, add="+")
+
+    def _schedule_idle_logout(self) -> None:
+        if self._idle_after_id is not None:
+            self.after_cancel(self._idle_after_id)
+        self._idle_after_id = self.after(
+            INACTIVITY_TIMEOUT_MS,
+            self._logout,
+        )
+
+    def _reset_idle_timer(self, _event: tk.Event | None = None) -> None:
+        self._schedule_idle_logout()
+
+    def _logout(self) -> None:
+        self._relogin_requested = True
+        self.destroy()
+
+    def _close(self) -> None:
+        self._relogin_requested = False
+        self.destroy()
+
+    def run(self) -> bool:
+        self.mainloop()
+        return self._relogin_requested
 
     def show_reports(self) -> str:
         """Открывает окно формирования, сортировки и печати отчетов."""
@@ -302,6 +348,40 @@ class AirportApplication(tk.Tk):
         )
 
 
+def _draw_ico(canvas: tk.Canvas, center_x: int, center_y: int) -> None:
+    data = APP_ICON_PATH.read_bytes()
+    image_size = struct.unpack_from("<I", data, 14)[0]
+    image_offset = struct.unpack_from("<I", data, 18)[0]
+    dib = data[image_offset:image_offset + image_size]
+    header_size, width, dib_height, _, bits_per_pixel = struct.unpack_from(
+        "<IiiHH", dib, 0
+    )
+    if header_size < 40 or bits_per_pixel != 32:
+        raise ValueError("Поддерживаются только 32-битные ICO-файлы")
+
+    height = dib_height // 2
+    pixel_offset = header_size
+    row_size = width * 4
+    left = center_x - width // 2
+    top = center_y - height // 2
+    for row in range(height):
+        source_row = height - row - 1
+        start = pixel_offset + source_row * row_size
+        for column, (blue, green, red, alpha) in enumerate(struct.iter_unpack(
+            "BBBB", dib[start:start + row_size]
+        )):
+            if alpha:
+                color = f"#{red:02x}{green:02x}{blue:02x}"
+                canvas.create_rectangle(
+                    left + column,
+                    top + row,
+                    left + column + 1,
+                    top + row + 1,
+                    fill=color,
+                    outline=color,
+                )
+
+
 def run() -> None:
     try:
         initialize_database()
@@ -316,12 +396,15 @@ def run() -> None:
         root.destroy()
         return
     splash_center = show_splash()
-    if LoginWindow(splash_center).run():
-        AirportApplication(splash_center).mainloop()
+    while LoginWindow(splash_center).run():
+        if not AirportApplication(splash_center).run():
+            break
 
 
 def show_splash() -> tuple[int, int]:
     splash = tk.Tk()
+    if APP_ICON_PATH.exists():
+        splash.iconbitmap(APP_ICON_PATH)
     splash.overrideredirect(True)
     splash.configure(bg=COLORS["background"])
 
@@ -346,24 +429,8 @@ def show_splash() -> tuple[int, int]:
         outline="#8bc7e8",
         width=2,
     )
-    canvas.create_oval(
-        width // 2 - 62, 34, width // 2 + 62, 158,
-        fill=COLORS["button"],
-        outline="#5ca9e6",
-        width=2,
-    )
-    canvas.create_polygon(
-        width // 2 - 8, 58,
-        width // 2 + 22, 110,
-        width // 2 + 7, 110,
-        width // 2 + 25, 137,
-        width // 2 - 4, 116,
-        width // 2 - 28, 137,
-        width // 2 - 10, 110,
-        width // 2 - 25, 110,
-        fill="#3b82c4",
-        outline="#24527a",
-    )
+    if APP_ICON_PATH.exists():
+        _draw_ico(canvas, width // 2, 95)
     canvas.create_text(
         width // 2,
         192,

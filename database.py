@@ -275,7 +275,13 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
         )
         connection.executemany(
             "INSERT OR IGNORE INTO cities(name) VALUES (?)",
-            [("Москва",), ("Санкт-Петербург",), ("Екатеринбург",)],
+            [
+                ("Москва",),
+                ("Санкт-Петербург",),
+                ("Екатеринбург",),
+                ("Новосибирск",),
+                ("Казань",),
+            ],
         )
         city_ids = {
             row["name"]: row["id"]
@@ -287,11 +293,19 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
                 ("Шереметьево", city_ids["Москва"], "SVO"),
                 ("Пулково", city_ids["Санкт-Петербург"], "LED"),
                 ("Кольцово", city_ids["Екатеринбург"], "SVX"),
+                ("Толмачёво", city_ids["Новосибирск"], "OVB"),
+                ("Казань", city_ids["Казань"], "KZN"),
             ],
         )
         connection.executemany(
             "INSERT OR IGNORE INTO aircraft_models(name) VALUES (?)",
-            [("Airbus A320",), ("Sukhoi Superjet 100",)],
+            [
+                ("Airbus A320",),
+                ("Sukhoi Superjet 100",),
+                ("Boeing 737-800",),
+                ("Embraer E190",),
+                ("Airbus A321",),
+            ],
         )
         model_ids = {
             row["name"]: row["id"]
@@ -302,8 +316,43 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
             [
                 (model_ids["Airbus A320"], "RA-32001", 180),
                 (model_ids["Sukhoi Superjet 100"], "RA-89001", 100),
+                (model_ids["Boeing 737-800"], "RA-73701", 189),
+                (model_ids["Embraer E190"], "RA-19001", 100),
+                (model_ids["Airbus A321"], "RA-32101", 220),
             ],
         )
+    # Complete reference examples for databases created by an older version.
+    connection.executemany(
+        "INSERT OR IGNORE INTO cities(name) VALUES (?)",
+        [("Новосибирск",), ("Казань",)],
+    )
+    city_ids = {
+        row["name"]: row["id"]
+        for row in connection.execute("SELECT id, name FROM cities")
+    }
+    connection.executemany(
+        "INSERT OR IGNORE INTO airports(name, city_id, iata_code) VALUES (?, ?, ?)",
+        [
+            ("Толмачёво", city_ids["Новосибирск"], "OVB"),
+            ("Казань", city_ids["Казань"], "KZN"),
+        ],
+    )
+    connection.executemany(
+        "INSERT OR IGNORE INTO aircraft_models(name) VALUES (?)",
+        [("Boeing 737-800",), ("Embraer E190",), ("Airbus A321",)],
+    )
+    model_ids = {
+        row["name"]: row["id"]
+        for row in connection.execute("SELECT id, name FROM aircraft_models")
+    }
+    connection.executemany(
+        "INSERT OR IGNORE INTO aircrafts(model_id, registration_number, seats) VALUES (?, ?, ?)",
+        [
+            (model_ids["Boeing 737-800"], "RA-73701", 189),
+            (model_ids["Embraer E190"], "RA-19001", 100),
+            (model_ids["Airbus A321"], "RA-32101", 220),
+        ],
+    )
     connection.executemany(
         "INSERT OR IGNORE INTO airlines(name, iata_code) VALUES (?, ?)",
         [("Победа", "DP"), ("Россия", "FV"), ("Utair", "UT")],
@@ -352,12 +401,15 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
             ("Петрова Анна Сергеевна", "4012 234567", "+7 900 222-33-44", "petrova@example.com"),
             ("Сидоров Пётр Алексеевич", "5015 345678", "+7 900 333-44-55", "sidorov@example.com"),
             ("Кузнецова Мария Олеговна", "4516 456789", "+7 900 444-55-66", "kuznetsova@example.com"),
+            ("Морозов Николай Игоревич", "5412 567890", "+7 900 888-66-77", "morozov@example.com"),
         ],
     )
     employees = [
         ("Смирнов Алексей Викторович", "Старший диспетчер", "+7 900 555-11-22"),
         ("Орлова Елена Андреевна", "Диспетчер", "+7 900 666-22-33"),
         ("Волков Дмитрий Павлович", "Специалист по регистрации", "+7 900 777-33-44"),
+        ("Фёдорова Ирина Максимовна", "Инспектор по безопасности", "+7 900 888-44-55"),
+        ("Никитин Сергей Олегович", "Техник воздушных судов", "+7 900 999-55-66"),
     ]
     for full_name, position, phone in employees:
         connection.execute(
@@ -387,6 +439,7 @@ def _insert_seed_data(connection: sqlite3.Connection) -> None:
         ("T-10002", "4012 234567", "S7-205", "7C", "Оплачен", 9800),
         ("T-10003", "5015 345678", "U6-310", "4A", "Забронирован", 11200),
         ("T-10004", "4516 456789", "DP-404", "18F", "Оплачен", 8700),
+        ("T-10005", "5412 567890", "FV-512", "21D", "Забронирован", 10300),
     ]
     if all(
         passport in passenger_ids and flight_number in flight_ids

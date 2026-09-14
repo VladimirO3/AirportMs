@@ -4,6 +4,186 @@ from tkinter import messagebox, ttk
 from database import DatabaseError
 
 
+class Tooltip:
+    """Показывает краткую подсказку при наведении на элемент интерфейса."""
+
+    _DELAY_MS = 500
+
+    def __init__(self, widget: tk.Misc, text: str) -> None:
+        self.widget = widget
+        self.text = text
+        self._after_id: str | None = None
+        self._window: tk.Toplevel | None = None
+        widget.bind("<Enter>", self._schedule, add="+")
+        widget.bind("<Leave>", self._hide, add="+")
+        widget.bind("<ButtonPress>", self._hide, add="+")
+
+    def _schedule(self, _event: tk.Event) -> None:
+        self._cancel()
+        self._after_id = self.widget.after(self._DELAY_MS, self._show)
+
+    def _show(self) -> None:
+        self._after_id = None
+        if self._window is not None or not self.text:
+            return
+        self._window = tk.Toplevel(self.widget)
+        self._window.wm_overrideredirect(True)
+        self._window.attributes("-topmost", True)
+        label = tk.Label(
+            self._window,
+            text=self.text,
+            background="#fff8dc",
+            foreground="#222222",
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=7,
+            pady=4,
+        )
+        label.pack()
+        self._window.update_idletasks()
+        x = self.widget.winfo_rootx() + 12
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self._window.geometry(f"+{x}+{y}")
+
+    def _hide(self, _event: tk.Event) -> None:
+        self._cancel()
+        if self._window is not None:
+            self._window.destroy()
+            self._window = None
+
+    def _cancel(self) -> None:
+        if self._after_id is not None:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
+
+
+class NotebookTooltip:
+    """Показывает подсказку для вкладки, на которую наведен курсор."""
+
+    _DELAY_MS = 500
+
+    def __init__(self, notebook: ttk.Notebook) -> None:
+        self.notebook = notebook
+        self._after_id: str | None = None
+        self._window: tk.Toplevel | None = None
+        self._text = ""
+        notebook.bind("<Motion>", self._motion, add="+")
+        notebook.bind("<Leave>", self._hide, add="+")
+        notebook.bind("<ButtonPress>", self._hide, add="+")
+
+    def _motion(self, event: tk.Event) -> None:
+        if self.notebook.identify(event.x, event.y) != "label":
+            self._hide(event)
+            return
+        try:
+            tab_index = self.notebook.index(f"@{event.x},{event.y}")
+        except tk.TclError:
+            self._hide(event)
+            return
+        titles = {
+            "Авиакомпании": "Справочник авиакомпаний и их IATA-кодов.",
+            "Аэропорты": "Справочник аэропортов, городов и IATA-кодов.",
+            "Самолёты": "Список самолётов и их регистрационных номеров.",
+            "Рейсы": "Расписание рейсов и управление их статусами.",
+            "Пассажиры": "Список пассажиров и их контактных данных.",
+            "Сотрудники": "Список сотрудников аэропорта.",
+            "Билеты": "Оформление и управление билетами.",
+        }
+        title = str(self.notebook.tab(tab_index, "text"))
+        text = titles.get(title, title)
+        if text == self._text and self._window is not None:
+            return
+        self._hide(event)
+        self._text = text
+        self._after_id = self.notebook.after(self._DELAY_MS, self._show)
+
+    def _show(self) -> None:
+        self._after_id = None
+        if self._window is not None or not self._text:
+            return
+        self._window = tk.Toplevel(self.notebook)
+        self._window.wm_overrideredirect(True)
+        self._window.attributes("-topmost", True)
+        label = tk.Label(
+            self._window,
+            text=self._text,
+            background="#fff8dc",
+            foreground="#222222",
+            relief=tk.SOLID,
+            borderwidth=1,
+            padx=7,
+            pady=4,
+        )
+        label.pack()
+        self._window.update_idletasks()
+        x = self.notebook.winfo_pointerx() + 12
+        y = self.notebook.winfo_pointery() + 18
+        self._window.geometry(f"+{x}+{y}")
+
+    def _hide(self, _event: tk.Event) -> None:
+        if self._after_id is not None:
+            self.notebook.after_cancel(self._after_id)
+            self._after_id = None
+        self._text = ""
+        if self._window is not None:
+            self._window.destroy()
+            self._window = None
+
+
+def install_tooltips(root: tk.Misc) -> None:
+    """Подключает подсказки к полям ввода, спискам и кнопкам окна."""
+    button_hints = {
+        "Добавить": "Добавить новую запись.",
+        "Изменить": "Сохранить изменения выбранной записи.",
+        "Удалить": "Удалить выбранную запись.",
+        "Обновить статус": "Изменить статус выбранного рейса.",
+        "Обновить список": "Обновить список с учетом заданных фильтров.",
+        "Отчеты": "Открыть формирование отчетов.",
+        "Справка": "Открыть справку по текущей вкладке.",
+    }
+
+    def label_for(widget: tk.Misc) -> str | None:
+        parent = widget.master
+        labels: list[tuple[int, str]] = []
+        try:
+            widget_column = int(widget.grid_info().get("column", 0))
+            widget_row = int(widget.grid_info().get("row", 0))
+            for sibling in parent.winfo_children():
+                if not isinstance(sibling, ttk.Label):
+                    continue
+                info = sibling.grid_info()
+                if int(info.get("row", 0)) != widget_row:
+                    continue
+                column = int(info.get("column", 0))
+                if column < widget_column:
+                    text = str(sibling.cget("text")).rstrip(":")
+                    if text:
+                        labels.append((column, text))
+        except (tk.TclError, ValueError):
+            return None
+        if labels:
+            return max(labels)[1]
+        return None
+
+    def visit(widget: tk.Misc) -> None:
+        if isinstance(widget, ttk.Notebook):
+            NotebookTooltip(widget)
+        if isinstance(widget, (tk.Button, ttk.Button)):
+            text = str(widget.cget("text"))
+            if text in button_hints:
+                Tooltip(widget, button_hints[text])
+        elif isinstance(widget, (ttk.Entry, ttk.Combobox)):
+            label = label_for(widget)
+            Tooltip(
+                widget,
+                f"Введите значение: {label.lower()}." if label else "Введите или выберите значение.",
+            )
+        for child in widget.winfo_children():
+            visit(child)
+
+    visit(root)
+
+
 def _sort_key(value: object) -> tuple[int, object]:
     try:
         return (0, float(value))

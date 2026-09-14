@@ -1,7 +1,15 @@
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-from config import COLORS, DEFAULT_LOGIN, DEFAULT_PASSWORD, LOGIN_GEOMETRY, LOGIN_TITLE
+from config import (
+    APP_ICON_PATH,
+    APP_COPYRIGHT,
+    COLORS,
+    DEFAULT_LOGIN,
+    DEFAULT_PASSWORD,
+    LOGIN_GEOMETRY,
+    LOGIN_TITLE,
+)
 
 
 def validate_credentials(login: str, password: str) -> bool:
@@ -16,6 +24,8 @@ class LoginWindow(tk.Tk):
 
     def __init__(self, center: tuple[int, int] | None = None) -> None:
         super().__init__()
+        if APP_ICON_PATH.exists():
+            self.iconbitmap(APP_ICON_PATH)
         self.authenticated = False
         self.background_color = COLORS["background"]
         self.configure(bg=self.background_color)
@@ -93,6 +103,12 @@ class LoginWindow(tk.Tk):
             style="Login.TButton",
             command=self._check_credentials,
         ).grid(row=4, column=0, columnspan=2)
+        ttk.Label(
+            frame,
+            text=APP_COPYRIGHT,
+            foreground=COLORS["muted_text"],
+            justify=tk.CENTER,
+        ).grid(row=5, column=0, columnspan=2, pady=(18, 0))
         login_entry.focus_set()
 
     def _check_credentials(self) -> None:

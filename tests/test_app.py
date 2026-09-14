@@ -117,6 +117,7 @@ class SortingTests(unittest.TestCase):
 
 class HelpTests(unittest.TestCase):
     def test_help_topics_are_available(self) -> None:
+        self.assertIn("О системе", HELP_TOPICS)
         self.assertIn("Рейсы", HELP_TOPICS)
         self.assertIn("Отчеты и печать", HELP_TOPICS)
 
