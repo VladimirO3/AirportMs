@@ -33,6 +33,10 @@ airport_report_*.html
 *.swo
 *~
 
+# Diagram source files
+*.drawio
+*.puml
+
 # Operating system files
 .DS_Store
 Thumbs.db
